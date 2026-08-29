@@ -114,9 +114,7 @@ Dashboard panels include:
 - cAdvisor Health
 
 - <img width="1710" height="993" alt="image" src="https://github.com/user-attachments/assets/0bdbf8b5-437f-4ca1-8b28-d34656e34e73" />
-
 <img width="1710" height="993" alt="image" src="https://github.com/user-attachments/assets/c5aff600-1825-43bc-8325-27d3989e65f3" />
-
 <img width="1710" height="1031" alt="image" src="https://github.com/user-attachments/assets/1c347c46-04f5-45c7-bea3-6cb27bf802b8" />
 
 
@@ -140,7 +138,6 @@ A service outage is detected when the PawGuard Prometheus target becomes unavail
 <img width="1710" height="1031" alt="image" src="https://github.com/user-attachments/assets/2f193e19-8da2-4b24-b6f3-ed5a98273471" />
 <img width="1710" height="1031" alt="image" src="https://github.com/user-attachments/assets/01c8eee8-1dd7-4630-9375-d633274914a6" />
 <img width="1710" height="1031" alt="image" src="https://github.com/user-attachments/assets/cb236fa8-5601-40fa-9942-2a8bfbd08986" />
-
 <img width="1710" height="1031" alt="image" src="https://github.com/user-attachments/assets/004a4ca3-036f-41bc-8f2e-acf5ed27b41d" />
 
 
