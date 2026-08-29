@@ -113,6 +113,9 @@ Dashboard panels include:
 - Node Exporter Health
 - cAdvisor Health
 
+- <img width="1710" height="993" alt="image" src="https://github.com/user-attachments/assets/0bdbf8b5-437f-4ca1-8b28-d34656e34e73" />
+
+
 
 ## 🚨 Alerting
 
