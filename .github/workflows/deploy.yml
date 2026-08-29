@@ -22,11 +22,7 @@ jobs:
     name: Build and Publish
     runs-on: ubuntu-latest
 
-    outputs:
-      image: ${{ steps.image.outputs.image }}
-
     steps:
-
       - name: Checkout repository
         uses: actions/checkout@v4
 
@@ -37,7 +33,7 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push image
+      - name: Build and push immutable image
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -45,11 +41,6 @@ jobs:
           tags: |
             ${{ env.IMAGE_NAME }}:${{ github.sha }}
             ${{ env.IMAGE_NAME }}:latest
-
-      - name: Export image reference
-        id: image
-        run: |
-          echo "image=${IMAGE_NAME}:${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
 
   deploy:
     name: Deploy to GCP
@@ -67,30 +58,77 @@ jobs:
       - name: Setup gcloud
         uses: google-github-actions/setup-gcloud@v2
 
-      - name: Deploy immutable image
+      - name: Deploy with automatic rollback
         run: |
           gcloud compute ssh "$VM_NAME" \
             --project="$PROJECT_ID" \
             --zone="$VM_ZONE" \
             --tunnel-through-iap \
             --command="
-              cd ~/pawguard &&
-              export PAWGUARD_IMAGE='${IMAGE_NAME}:${GITHUB_SHA}' &&
-              sed -i \"s|image: ghcr.io/spd-778/pawguard:.*|image: \${PAWGUARD_IMAGE}|\" docker-compose.yml &&
-              docker compose pull pawguard-web &&
-              docker compose up -d pawguard-web &&
-              sleep 20 &&
-              docker compose ps
-            "
+              set -e
 
-      - name: Verify deployment
-        run: |
-          gcloud compute ssh "$VM_NAME" \
-            --project="$PROJECT_ID" \
-            --zone="$VM_ZONE" \
-            --tunnel-through-iap \
-            --command="
-              curl -fsS http://localhost:8080 > /dev/null &&
-              docker inspect pawguard-web --format='Health={{.State.Health.Status}} Image={{.Config.Image}}' &&
-              echo 'Deployment successful'
+              cd ~/pawguard
+
+              echo '===== CAPTURE CURRENT PRODUCTION IMAGE ====='
+
+              CURRENT_IMAGE=\$(docker inspect pawguard-web \
+                --format='{{.Config.Image}}' 2>/dev/null || true)
+
+              echo \"Current image: \$CURRENT_IMAGE\"
+
+              if [ -n \"\$CURRENT_IMAGE\" ]; then
+                echo \"\$CURRENT_IMAGE\" > .previous-image
+              fi
+
+              echo '===== DEPLOY NEW IMAGE ====='
+
+              export NEW_IMAGE='${IMAGE_NAME}:${GITHUB_SHA}'
+
+              sed -i \"s|image: ghcr.io/spd-778/pawguard:.*|image: \$NEW_IMAGE|\" docker-compose.yml
+
+              docker compose pull pawguard-web
+              docker compose up -d pawguard-web
+
+              echo '===== WAIT FOR HEALTH ====='
+
+              sleep 30
+
+              HEALTH=\$(docker inspect pawguard-web \
+                --format='{{.State.Health.Status}}')
+
+              echo \"Health: \$HEALTH\"
+
+              echo '===== VERIFY APPLICATION ====='
+
+              if [ \"\$HEALTH\" != 'healthy' ]; then
+                echo 'DEPLOYMENT FAILED — STARTING ROLLBACK'
+
+                if [ -f .previous-image ]; then
+                  PREVIOUS_IMAGE=\$(cat .previous-image)
+
+                  echo \"Rolling back to: \$PREVIOUS_IMAGE\"
+
+                  sed -i \"s|image: ghcr.io/spd-778/pawguard:.*|image: \$PREVIOUS_IMAGE|\" docker-compose.yml
+
+                  docker compose pull pawguard-web
+                  docker compose up -d pawguard-web
+
+                  sleep 30
+
+                  curl -fsS http://localhost:8080
+
+                  echo 'ROLLBACK SUCCESSFUL'
+                else
+                  echo 'NO PREVIOUS IMAGE AVAILABLE'
+                  exit 1
+                fi
+
+                exit 1
+              fi
+
+              curl -fsS http://localhost:8080 > /dev/null
+
+              echo '===== DEPLOYMENT SUCCESSFUL ====='
+              docker inspect pawguard-web \
+                --format='Image={{.Config.Image}} Health={{.State.Health.Status}}'
             "
