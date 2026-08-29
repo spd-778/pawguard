@@ -1,4 +1,4 @@
-# 🐾 PawGuard — DevOps & SRE Platform
+# 🐾 PawGuard 
 
 Cloud-native animal safety and rescue platform built on Google Cloud with Terraform, Docker, CI/CD, observability, and SRE practices.
 
