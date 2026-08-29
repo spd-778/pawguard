@@ -4,9 +4,6 @@ on:
   push:
     branches:
       - main
-  pull_request:
-    branches:
-      - main
 
 permissions:
   contents: read
@@ -14,43 +11,41 @@ permissions:
   id-token: write
 
 env:
-  REGISTRY: ghcr.io
-  IMAGE_NAME: spd-778/pawguard
   PROJECT_ID: pawguard-507001
   VM_NAME: pawguard-app
   VM_ZONE: northamerica-northeast1-a
+  IMAGE: ghcr.io/spd-778/pawguard:latest
 
 jobs:
 
-  build:
+  build-and-push:
     name: Build and Publish
     runs-on: ubuntu-latest
 
     steps:
 
-      - name: Checkout
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Login to GHCR
+      - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and Push Docker Image
+      - name: Build and push Docker image
         uses: docker/build-push-action@v6
         with:
           context: .
           push: true
           tags: |
-            ghcr.io/${{ env.IMAGE_NAME }}:latest
-            ghcr.io/${{ env.IMAGE_NAME }}:${{ github.sha }}
+            ghcr.io/spd-778/pawguard:latest
+            ghcr.io/spd-778/pawguard:${{ github.sha }}
 
   deploy:
     name: Deploy to GCP
-    needs: build
-    if: github.event_name == 'push'
+    needs: build-and-push
     runs-on: ubuntu-latest
 
     steps:
@@ -61,29 +56,31 @@ jobs:
           workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ secrets.GCP_DEPLOYER_SERVICE_ACCOUNT }}
 
-      - name: Setup gcloud
+      - name: Set up Google Cloud CLI
         uses: google-github-actions/setup-gcloud@v2
 
-      - name: Deploy PawGuard
+      - name: Deploy to GCP VM
         run: |
           gcloud compute ssh "$VM_NAME" \
             --project="$PROJECT_ID" \
             --zone="$VM_ZONE" \
+            --tunnel-through-iap \
             --command="
               cd ~/pawguard &&
               git fetch origin main &&
               git reset --hard origin/main &&
               docker compose pull pawguard-web &&
               docker compose up -d pawguard-web &&
-              sleep 15 &&
+              sleep 20 &&
               docker compose ps
             "
 
-      - name: Verify Deployment
+      - name: Verify PawGuard
         run: |
           gcloud compute ssh "$VM_NAME" \
             --project="$PROJECT_ID" \
             --zone="$VM_ZONE" \
+            --tunnel-through-iap \
             --command="
               curl -fsS http://localhost:8080 > /dev/null &&
               echo 'PawGuard deployment successful'
