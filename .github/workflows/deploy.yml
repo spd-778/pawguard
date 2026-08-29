@@ -14,7 +14,7 @@ env:
   PROJECT_ID: pawguard-507001
   VM_NAME: pawguard-app
   VM_ZONE: northamerica-northeast1-a
-  IMAGE: ghcr.io/spd-778/pawguard:latest
+  IMAGE_NAME: ghcr.io/spd-778/pawguard
 
 jobs:
 
@@ -22,26 +22,34 @@ jobs:
     name: Build and Publish
     runs-on: ubuntu-latest
 
+    outputs:
+      image: ${{ steps.image.outputs.image }}
+
     steps:
 
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Log in to GitHub Container Registry
+      - name: Log in to GHCR
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push Docker image
+      - name: Build and push image
         uses: docker/build-push-action@v6
         with:
           context: .
           push: true
           tags: |
-            ghcr.io/spd-778/pawguard:latest
-            ghcr.io/spd-778/pawguard:${{ github.sha }}
+            ${{ env.IMAGE_NAME }}:${{ github.sha }}
+            ${{ env.IMAGE_NAME }}:latest
+
+      - name: Export image reference
+        id: image
+        run: |
+          echo "image=${IMAGE_NAME}:${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
 
   deploy:
     name: Deploy to GCP
@@ -56,10 +64,10 @@ jobs:
           workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ secrets.GCP_DEPLOYER_SERVICE_ACCOUNT }}
 
-      - name: Set up Google Cloud CLI
+      - name: Setup gcloud
         uses: google-github-actions/setup-gcloud@v2
 
-      - name: Deploy to GCP VM
+      - name: Deploy immutable image
         run: |
           gcloud compute ssh "$VM_NAME" \
             --project="$PROJECT_ID" \
@@ -67,15 +75,15 @@ jobs:
             --tunnel-through-iap \
             --command="
               cd ~/pawguard &&
-              git fetch origin main &&
-              git reset --hard origin/main &&
+              export PAWGUARD_IMAGE='${IMAGE_NAME}:${GITHUB_SHA}' &&
+              sed -i \"s|image: ghcr.io/spd-778/pawguard:.*|image: \${PAWGUARD_IMAGE}|\" docker-compose.yml &&
               docker compose pull pawguard-web &&
               docker compose up -d pawguard-web &&
               sleep 20 &&
               docker compose ps
             "
 
-      - name: Verify PawGuard
+      - name: Verify deployment
         run: |
           gcloud compute ssh "$VM_NAME" \
             --project="$PROJECT_ID" \
@@ -83,5 +91,6 @@ jobs:
             --tunnel-through-iap \
             --command="
               curl -fsS http://localhost:8080 > /dev/null &&
-              echo 'PawGuard deployment successful'
+              docker inspect pawguard-web --format='Health={{.State.Health.Status}} Image={{.Config.Image}}' &&
+              echo 'Deployment successful'
             "
