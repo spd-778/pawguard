@@ -23,3 +23,7 @@ crash.*.log
 
 # Logs
 *.log
+
+.current-image
+.previous-image
+.failed-image
