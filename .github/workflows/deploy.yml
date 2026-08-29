@@ -1,0 +1,90 @@
+name: PawGuard CI/CD
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+  packages: write
+  id-token: write
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: spd-778/pawguard
+  PROJECT_ID: pawguard-507001
+  VM_NAME: pawguard-app
+  VM_ZONE: northamerica-northeast1-a
+
+jobs:
+
+  build:
+    name: Build and Publish
+    runs-on: ubuntu-latest
+
+    steps:
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and Push Docker Image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: |
+            ghcr.io/${{ env.IMAGE_NAME }}:latest
+            ghcr.io/${{ env.IMAGE_NAME }}:${{ github.sha }}
+
+  deploy:
+    name: Deploy to GCP
+    needs: build
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+
+    steps:
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_DEPLOYER_SERVICE_ACCOUNT }}
+
+      - name: Setup gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Deploy PawGuard
+        run: |
+          gcloud compute ssh "$VM_NAME" \
+            --project="$PROJECT_ID" \
+            --zone="$VM_ZONE" \
+            --command="
+              cd ~/pawguard &&
+              git fetch origin main &&
+              git reset --hard origin/main &&
+              docker compose pull pawguard-web &&
+              docker compose up -d pawguard-web &&
+              sleep 15 &&
+              docker compose ps
+            "
+
+      - name: Verify Deployment
+        run: |
+          gcloud compute ssh "$VM_NAME" \
+            --project="$PROJECT_ID" \
+            --zone="$VM_ZONE" \
+            --command="
+              curl -fsS http://localhost:8080 > /dev/null &&
+              echo 'PawGuard deployment successful'
+            "
