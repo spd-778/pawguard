@@ -42,93 +42,93 @@ jobs:
             ${{ env.IMAGE_NAME }}:${{ github.sha }}
             ${{ env.IMAGE_NAME }}:latest
 
-  deploy:
-    name: Deploy to GCP
-    needs: build-and-push
-    runs-on: ubuntu-latest
-
-    steps:
-
-      - name: Authenticate to Google Cloud
-        uses: google-github-actions/auth@v2
-        with:
-          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
-          service_account: ${{ secrets.GCP_DEPLOYER_SERVICE_ACCOUNT }}
-
-      - name: Setup gcloud
-        uses: google-github-actions/setup-gcloud@v2
-
-      - name: Deploy with automatic rollback
-        run: |
-          gcloud compute ssh "$VM_NAME" \
-            --project="$PROJECT_ID" \
-            --zone="$VM_ZONE" \
-            --tunnel-through-iap \
-            --command="
-              set -e
-
-              cd ~/pawguard
-
-              echo '===== CAPTURE CURRENT PRODUCTION IMAGE ====='
-
-              CURRENT_IMAGE=\$(docker inspect pawguard-web \
-                --format='{{.Config.Image}}' 2>/dev/null || true)
-
-              echo \"Current image: \$CURRENT_IMAGE\"
-
-              if [ -n \"\$CURRENT_IMAGE\" ]; then
-                echo \"\$CURRENT_IMAGE\" > .previous-image
-              fi
-
-              echo '===== DEPLOY NEW IMAGE ====='
-
-              export NEW_IMAGE='${IMAGE_NAME}:${GITHUB_SHA}'
-
-              sed -i \"s|image: ghcr.io/spd-778/pawguard:.*|image: \$NEW_IMAGE|\" docker-compose.yml
-
-              docker compose pull pawguard-web
-              docker compose up -d pawguard-web
-
-              echo '===== WAIT FOR HEALTH ====='
-
-              sleep 30
-
-              HEALTH=\$(docker inspect pawguard-web \
-                --format='{{.State.Health.Status}}')
-
-              echo \"Health: \$HEALTH\"
-
-              echo '===== VERIFY APPLICATION ====='
-
-              if [ \"\$HEALTH\" != 'healthy' ]; then
-                echo 'DEPLOYMENT FAILED — STARTING ROLLBACK'
-
-                if [ -f .previous-image ]; then
-                  PREVIOUS_IMAGE=\$(cat .previous-image)
-
-                  echo \"Rolling back to: \$PREVIOUS_IMAGE\"
-
-                  sed -i \"s|image: ghcr.io/spd-778/pawguard:.*|image: \$PREVIOUS_IMAGE|\" docker-compose.yml
-
-                  docker compose pull pawguard-web
-                  docker compose up -d pawguard-web
-
-                  sleep 30
-
-                  curl -fsS http://localhost:8080
-
-                  echo 'ROLLBACK SUCCESSFUL'
-                else
-                  echo 'NO PREVIOUS IMAGE AVAILABLE'
+    deploy:
+      name: Deploy to GCP
+      needs: build-and-push
+      runs-on: ubuntu-latest
+  
+      steps:
+  
+        - name: Authenticate to Google Cloud
+          uses: google-github-actions/auth@v2
+          with:
+            workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+            service_account: ${{ secrets.GCP_DEPLOYER_SERVICE_ACCOUNT }}
+  
+        - name: Setup gcloud
+          uses: google-github-actions/setup-gcloud@v2
+  
+        - name: Deploy with automatic rollback
+          run: |
+            gcloud compute ssh "$VM_NAME" \
+              --project="$PROJECT_ID" \
+              --zone="$VM_ZONE" \
+              --tunnel-through-iap \
+              --command="
+                set -e
+  
+                cd ~/pawguard
+  
+                echo '===== CAPTURE CURRENT PRODUCTION IMAGE ====='
+  
+                CURRENT_IMAGE=\$(docker inspect pawguard-web \
+                  --format='{{.Config.Image}}' 2>/dev/null || true)
+  
+                echo \"Current image: \$CURRENT_IMAGE\"
+  
+                if [ -n \"\$CURRENT_IMAGE\" ]; then
+                  echo \"\$CURRENT_IMAGE\" > .previous-image
+                fi
+  
+                echo '===== DEPLOY NEW IMAGE ====='
+  
+                export NEW_IMAGE='${IMAGE_NAME}:${GITHUB_SHA}'
+  
+                sed -i \"s|image: ghcr.io/spd-778/pawguard:.*|image: \$NEW_IMAGE|\" docker-compose.yml
+  
+                docker compose pull pawguard-web
+                docker compose up -d pawguard-web
+  
+                echo '===== WAIT FOR HEALTH ====='
+  
+                sleep 30
+  
+                HEALTH=\$(docker inspect pawguard-web \
+                  --format='{{.State.Health.Status}}')
+  
+                echo \"Health: \$HEALTH\"
+  
+                echo '===== VERIFY APPLICATION ====='
+  
+                if [ \"\$HEALTH\" != 'healthy' ]; then
+                  echo 'DEPLOYMENT FAILED — STARTING ROLLBACK'
+  
+                  if [ -f .previous-image ]; then
+                    PREVIOUS_IMAGE=\$(cat .previous-image)
+  
+                    echo \"Rolling back to: \$PREVIOUS_IMAGE\"
+  
+                    sed -i \"s|image: ghcr.io/spd-778/pawguard:.*|image: \$PREVIOUS_IMAGE|\" docker-compose.yml
+  
+                    docker compose pull pawguard-web
+                    docker compose up -d pawguard-web
+  
+                    sleep 30
+  
+                    curl -fsS http://localhost:8080
+  
+                    echo 'ROLLBACK SUCCESSFUL'
+                  else
+                    echo 'NO PREVIOUS IMAGE AVAILABLE'
+                    exit 1
+                  fi
+  
                   exit 1
                 fi
-
-                exit 1
-              fi
-
-              curl -fsS http://localhost:8080 > /dev/null
-
-              echo '===== DEPLOYMENT SUCCESSFUL ====='
-              docker inspect pawguard-web \
-                --format='Image={{.Config.Image}} Health={{.State.Health.Status}}'
-            "
+  
+                curl -fsS http://localhost:8080 > /dev/null
+  
+                echo '===== DEPLOYMENT SUCCESSFUL ====='
+                docker inspect pawguard-web \
+                  --format='Image={{.Config.Image}} Health={{.State.Health.Status}}'
+              "
