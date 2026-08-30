@@ -1,4 +1,7 @@
+name: pawguard
+
 services:
+
   pawguard-web:
     image: ghcr.io/spd-778/pawguard:latest
     container_name: pawguard-web
@@ -27,3 +30,99 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
+
+    networks:
+      - pawguard
+
+  prometheus:
+    image: prom/prometheus:v3.5.0
+    container_name: pawguard-prometheus
+    restart: unless-stopped
+
+    ports:
+      - "9090:9090"
+
+    volumes:
+      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./monitoring/prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - prometheus-data:/prometheus
+
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=7d"
+
+    depends_on:
+      pawguard-web:
+        condition: service_healthy
+
+    networks:
+      - pawguard
+
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.52.1
+    container_name: pawguard-cadvisor
+    restart: unless-stopped
+
+    ports:
+      - "8081:8080"
+
+    privileged: true
+
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker:/var/lib/docker:ro
+
+    networks:
+      - pawguard
+
+  node-exporter:
+    image: prom/node-exporter:v1.9.1
+    container_name: pawguard-node-exporter
+    restart: unless-stopped
+
+    ports:
+      - "9100:9100"
+
+    command:
+      - "--path.rootfs=/host"
+
+    volumes:
+      - /:/host:ro,rslave
+
+    networks:
+      - pawguard
+
+  grafana:
+    image: grafana/grafana:12.1.1
+    container_name: pawguard-grafana
+    restart: unless-stopped
+
+    ports:
+      - "3000:3000"
+
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+
+    depends_on:
+      - prometheus
+
+    networks:
+      - pawguard
+
+volumes:
+  prometheus-data:
+  grafana-data:
+
+networks:
+  pawguard:
+    driver: bridge

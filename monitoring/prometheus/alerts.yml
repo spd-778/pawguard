@@ -1,0 +1,40 @@
+groups:
+  - name: pawguard-sre-alerts
+    rules:
+
+      - alert: PawGuardDown
+        expr: up{job="pawguard"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          service: pawguard
+        annotations:
+          summary: "PawGuard service is down"
+          description: "PawGuard has been unavailable for more than 1 minute."
+
+      - alert: NodeCPUHigh
+        expr: 100 - (avg by(instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 80
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High node CPU usage"
+          description: "Node CPU utilization has exceeded 80% for 5 minutes."
+
+      - alert: NodeMemoryHigh
+        expr: 100 * (1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) > 80
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High node memory usage"
+          description: "Node memory utilization has exceeded 80% for 5 minutes."
+
+      - alert: PawGuardContainerRestarting
+        expr: changes(container_start_time_seconds{name=~".*pawguard.*"}[10m]) > 2
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "PawGuard container restarting"
+          description: "PawGuard container has restarted multiple times."
