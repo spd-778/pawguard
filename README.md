@@ -513,7 +513,7 @@ This project demonstrates practical SRE and DevOps principles:
 
 Prathyusha Danthuluri
 
-DevOps / SRE Portfolio Project
+DevOps / SRE Personal Portfolio Project
 
 GitHub:
 https://github.com/spd-778/pawguard
